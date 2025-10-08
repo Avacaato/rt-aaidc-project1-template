@@ -2,6 +2,7 @@ import os
 import chromadb
 from typing import List, Dict, Any
 from sentence_transformers import SentenceTransformer
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 class VectorDB:
@@ -39,7 +40,7 @@ class VectorDB:
 
         print(f"Vector database initialized with collection: {self.collection_name}")
 
-    def chunk_text(self, text: str, chunk_size: int = 500) -> List[str]:
+    def chunk_text(self, text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
         """
         Simple text chunking by splitting on spaces and grouping into chunks.
 
@@ -50,26 +51,12 @@ class VectorDB:
         Returns:
             List of text chunks
         """
-        # TODO: Implement text chunking logic
-        # You have several options for chunking text - choose one or experiment with multiple:
-        #
-        # OPTION 1: Simple word-based splitting
-        #   - Split text by spaces and group words into chunks of ~chunk_size characters
-        #   - Keep track of current chunk length and start new chunks when needed
-        #
-        # OPTION 2: Use LangChain's RecursiveCharacterTextSplitter
-        #   - from langchain_text_splitters import RecursiveCharacterTextSplitter
-        #   - Automatically handles sentence boundaries and preserves context better
-        #
-        # OPTION 3: Semantic splitting (advanced)
-        #   - Split by sentences using nltk or spacy
-        #   - Group semantically related sentences together
-        #   - Consider paragraph boundaries and document structure
-        #
-        # Feel free to try different approaches and see what works best!
+        splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=overlap
+        )
 
-        chunks = []
-        # Your implementation here
+        chunks = splitter.split_text(text)
 
         return chunks
 
@@ -80,17 +67,28 @@ class VectorDB:
         Args:
             documents: List of documents
         """
-        # TODO: Implement document ingestion logic
-        # HINT: Loop through each document in the documents list
-        # HINT: Extract 'content' and 'metadata' from each document dict
-        # HINT: Use self.chunk_text() to split each document into chunks
-        # HINT: Create unique IDs for each chunk (e.g., "doc_0_chunk_0")
-        # HINT: Use self.embedding_model.encode() to create embeddings for all chunks
-        # HINT: Store the embeddings, documents, metadata, and IDs in your vector database
-        # HINT: Print progress messages to inform the user
 
         print(f"Processing {len(documents)} documents...")
-        # Your implementation here
+        for doc_id, doc in enumerate(documents):
+            content = doc.get("content", "")
+            metadata = doc.get("metadata", {})
+            chunks = self.chunk_text(content)
+
+            print(f"Document {doc_id}: Split into {len(chunks)} chunks")
+
+            # Create unique IDs for each chunk
+            ids = [f"doc_{doc_id}_chunk_{i}" for i in range(len(chunks))]
+
+            # Generate embeddings for all chunks
+            embeddings = self.embedding_model.encode(chunks)
+
+            # Add to ChromaDB collection
+            self.collection.add(
+                documents=chunks,
+                metadatas=[metadata] * len(chunks),
+                embeddings=embeddings.tolist(),
+                ids=ids,
+            )
         print("Documents added to vector database")
 
     def search(self, query: str, n_results: int = 5) -> Dict[str, Any]:
@@ -104,17 +102,21 @@ class VectorDB:
         Returns:
             Dictionary containing search results with keys: 'documents', 'metadatas', 'distances', 'ids'
         """
-        # TODO: Implement similarity search logic
-        # HINT: Use self.embedding_model.encode([query]) to create query embedding
-        # HINT: Convert the embedding to appropriate format for your vector database
-        # HINT: Use your vector database's search/query method with the query embedding and n_results
-        # HINT: Return a dictionary with keys: 'documents', 'metadatas', 'distances', 'ids'
-        # HINT: Handle the case where results might be empty
+        query_embedding = self.embedding_model.encode([query]).tolist()
 
-        # Your implementation here
-        return {
-            "documents": [],
-            "metadatas": [],
-            "distances": [],
-            "ids": [],
-        }
+        results = self.collection.query(
+            query_embeddings=query_embedding,
+            n_results=n_results,
+            include=["documents", "metadatas", "distances", "ids"],
+        )
+
+        if results and all(key in results for key in ["documents", "metadatas", "distances", "ids"]):
+            return results
+        else:
+        
+            return {
+                "documents": [],
+                "metadatas": [],
+                "distances": [],
+                "ids": [],
+            }

@@ -1,4 +1,6 @@
 import os
+import fitz
+from docx import Document as DocxDocument
 from typing import List
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
@@ -7,25 +9,56 @@ from vectordb import VectorDB
 from langchain_openai import ChatOpenAI
 from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_perplexity import ChatPerplexity
 
 # Load environment variables
 load_dotenv()
 
 
-def load_documents() -> List[str]:
+def load_documents(data_dir: str = "data") -> List[str]:
     """
-    Load documents for demonstration.
+    Load documents from the data directory for demonstration.
+
+    Supports .txt, .pdf, .doc, .docx document types.
+
+    Args:
+        data_dir: Directory path containing documents to load
 
     Returns:
-        List of sample documents
+        List of document strings loaded from files
     """
-    results = []
-    # TODO: Implement document loading
-    # HINT: Read the documents from the data directory
-    # HINT: Return a list of documents
-    # HINT: Your implementation depends on the type of documents you are using (.txt, .pdf, etc.)
 
-    # Your implementation here
+    results = []
+
+    # Loop through all files in the data directory
+    for filename in os.listdir(data_dir):
+        filepath = os.path.join(data_dir, filename)
+        if os.path.isfile(filepath):
+            ext = filename.lower().split(".")[-1]
+            try:
+                if ext == "txt":
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        text = f.read()
+                    results.append(text)
+
+                elif ext == "pdf":
+                    doc = fitz.open(filepath)
+                    text = ""
+                    for page in doc:
+                        text += page.get_text()
+                    results.append(text)
+
+                elif ext in ("doc", "docx"):
+                    doc = DocxDocument(filepath)
+                    paragraphs = [para.text for para in doc.paragraphs]
+                    text = "\n".join(paragraphs)
+                    results.append(text)
+
+                else:
+                    print(f"Unsupported file type skipped: {filename}")
+            except Exception as e:
+                print(f"Error loading {filename}: {e}")
+
     return results
 
 
@@ -48,12 +81,17 @@ class RAGAssistant:
         # Initialize vector database
         self.vector_db = VectorDB()
 
-        # Create RAG prompt template
-        # TODO: Implement your RAG prompt template
-        # HINT: Use ChatPromptTemplate.from_template() with a template string
-        # HINT: Your template should include placeholders for {context} and {question}
-        # HINT: Design your prompt to effectively use retrieved context to answer questions
-        self.prompt_template = None  # Your implementation here
+        self.prompt_template = ChatPromptTemplate.from_template(
+            """
+            Use the following context to answer the user's question.
+            
+            Context: {context}
+
+            Question: {question}
+
+            Answer as clearly and concisely as possible, referring only to the given context.
+            """
+        )
 
         # Create the chain
         self.chain = self.prompt_template | self.llm | StrOutputParser()
@@ -88,6 +126,15 @@ class RAGAssistant:
                 model=model_name,
                 temperature=0.0,
             )
+        
+        elif os.getenv("PPLX_API_KEY"):
+            model_name = os.getenv("PPLX_MODEL", "gemini-1.5-flash")
+            print(f"Using Perplexity model: {model_name}")
+            return ChatPerplexity(
+                api_key=os.getenv("PPLX_API_KEY"),
+                model=model_name,
+                temperature=0.0,
+            )
 
         else:
             raise ValueError(
@@ -114,14 +161,16 @@ class RAGAssistant:
         Returns:
             Dictionary containing the answer and retrieved context
         """
-        llm_answer = ""
-        # TODO: Implement the RAG query pipeline
-        # HINT: Use self.vector_db.search() to retrieve relevant context chunks
-        # HINT: Combine the retrieved document chunks into a single context string
-        # HINT: Use self.chain.invoke() with context and question to generate the response
-        # HINT: Return a string answer from the LLM
 
-        # Your implementation here
+        search_results = self.vector_db.search(input, n_results=n_results)
+        context_chunks = search_results.get("documents", [])
+        context_str = "\n".join(context_chunks)
+
+        llm_answer = self.chain.invoke({
+            "context": context_str,
+            "question": input,
+        })
+        
         return llm_answer
 
 
