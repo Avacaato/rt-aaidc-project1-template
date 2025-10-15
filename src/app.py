@@ -75,13 +75,18 @@ class RAGAssistant:
 
         self.prompt_template = ChatPromptTemplate.from_template(
             """
-            Use the following context to answer the user's question.
-            
-            Context: {context}
+            You are an AI assistant using Retrieval-Augmented Generation (RAG).
 
-            Question: {question}
+            Use only the information provided in the following context to answer the user’s question.
 
-            Answer as clearly and concisely as possible, referring only to the given context.
+            Context:
+            {context}
+
+            Question:
+            {question}
+
+            Provide a clear, concise, and accurate answer strictly grounded in the context.  
+            If the context does not contain sufficient information, respond that the answer is not available within the given context, and do not speculate.
             """
         )
 
