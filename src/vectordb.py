@@ -60,13 +60,15 @@ class VectorDB:
 
         return chunks
 
-    def add_documents(self, documents: List) -> None:
+    def add_documents(self, documents: List[str]) -> None:
         """
         Add documents to the vector database.
 
         Args:
             documents: List of documents
         """
+
+        wrapped_docs = [{"content": doc, "metadata": {}} for doc in documents]
 
         print(f"Processing {len(documents)} documents...")
         for doc_id, doc in enumerate(documents):
@@ -85,7 +87,7 @@ class VectorDB:
             # Add to ChromaDB collection
             self.collection.add(
                 documents=chunks,
-                metadatas=[metadata] * len(chunks),
+                metadatas = [metadata if metadata else {"source": "unknown"} for _ in chunks],
                 embeddings=embeddings.tolist(),
                 ids=ids,
             )
@@ -107,7 +109,7 @@ class VectorDB:
         results = self.collection.query(
             query_embeddings=query_embedding,
             n_results=n_results,
-            include=["documents", "metadatas", "distances", "ids"],
+            include=["documents", "metadatas", "distances"],
         )
 
         if results and all(key in results for key in ["documents", "metadatas", "distances", "ids"]):

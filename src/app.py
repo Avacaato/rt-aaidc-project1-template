@@ -16,23 +16,15 @@ load_dotenv()
 
 
 def load_documents(data_dir: str = "data") -> List[str]:
-    """
-    Load documents from the data directory for demonstration.
-
-    Supports .txt, .pdf, .doc, .docx document types.
-
-    Args:
-        data_dir: Directory path containing documents to load
-
-    Returns:
-        List of document strings loaded from files
-    """
+    import os
+    base_dir = os.path.dirname(os.path.abspath(__file__))  # path to src
+    project_root = os.path.dirname(base_dir)               # go one level up to project root
+    full_data_dir = os.path.join(project_root, data_dir)   # point to data folder at root
 
     results = []
 
-    # Loop through all files in the data directory
-    for filename in os.listdir(data_dir):
-        filepath = os.path.join(data_dir, filename)
+    for filename in os.listdir(full_data_dir):
+        filepath = os.path.join(full_data_dir, filename)
         if os.path.isfile(filepath):
             ext = filename.lower().split(".")[-1]
             try:
@@ -104,28 +96,28 @@ class RAGAssistant:
         Tries OpenAI, Groq, and Google Gemini in that order.
         """
         # Check for OpenAI API key
-        if os.getenv("OPENAI_API_KEY"):
-            model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-            print(f"Using OpenAI model: {model_name}")
-            return ChatOpenAI(
-                api_key=os.getenv("OPENAI_API_KEY"), model=model_name, temperature=0.0
-            )
+        # if os.getenv("OPENAI_API_KEY"):
+        #     model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        #     print(f"Using OpenAI model: {model_name}")
+        #     return ChatOpenAI(
+        #         api_key=os.getenv("OPENAI_API_KEY"), model=model_name, temperature=0.0
+        #     )
 
-        elif os.getenv("GROQ_API_KEY"):
+        if os.getenv("GROQ_API_KEY"):
             model_name = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
             print(f"Using Groq model: {model_name}")
             return ChatGroq(
                 api_key=os.getenv("GROQ_API_KEY"), model=model_name, temperature=0.0
             )
 
-        elif os.getenv("GOOGLE_API_KEY"):
-            model_name = os.getenv("GOOGLE_MODEL", "gemini-2.0-flash")
-            print(f"Using Google Gemini model: {model_name}")
-            return ChatGoogleGenerativeAI(
-                google_api_key=os.getenv("GOOGLE_API_KEY"),
-                model=model_name,
-                temperature=0.0,
-            )
+        # elif os.getenv("GOOGLE_API_KEY"):
+        #     model_name = os.getenv("GOOGLE_MODEL", "gemini-2.0-flash")
+        #     print(f"Using Google Gemini model: {model_name}")
+        #     return ChatGoogleGenerativeAI(
+        #         google_api_key=os.getenv("GOOGLE_API_KEY"),
+        #         model=model_name,
+        #         temperature=0.0,
+        #     )
         
         elif os.getenv("PPLX_API_KEY"):
             model_name = os.getenv("PPLX_MODEL", "gemini-1.5-flash")
@@ -162,9 +154,24 @@ class RAGAssistant:
             Dictionary containing the answer and retrieved context
         """
 
+        
+
         search_results = self.vector_db.search(input, n_results=n_results)
+
+        if search_results and isinstance(search_results, dict):
+            context_chunks = search_results.get("documents", [])
+        else:
+            context_chunks = []
+
+        flattened_chunks = []
+        for chunk in context_chunks:
+            if isinstance(chunk, list):
+                flattened_chunks.extend(chunk)
+            else:
+                flattened_chunks.append(chunk)
+
         context_chunks = search_results.get("documents", [])
-        context_str = "\n".join(context_chunks)
+        context_str = "\n".join(flattened_chunks)
 
         llm_answer = self.chain.invoke({
             "context": context_str,
@@ -186,7 +193,8 @@ def main():
         sample_docs = load_documents()
         print(f"Loaded {len(sample_docs)} sample documents")
 
-        assistant.add_documents(sample_docs)
+        wrapped_docs = [{"content": doc} for doc in sample_docs]
+        assistant.add_documents(wrapped_docs)
 
         done = False
 
@@ -195,7 +203,7 @@ def main():
             if question.lower() == "quit":
                 done = True
             else:
-                result = assistant.query(question)
+                result = assistant.invoke(question)
                 print(result)
 
     except Exception as e:
